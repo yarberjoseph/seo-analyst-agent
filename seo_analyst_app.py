@@ -39,6 +39,26 @@ Format your strategic recommendations clearly with priority levels and expected 
 DATAFORSEO_BASE_URL = "https://api.dataforseo.com/v3"
 
 
+def safe_format_number(value):
+    """Safely format a number with commas, return 'N/A' if None"""
+    if value is None or value == 0:
+        return "N/A"
+    try:
+        return f"{int(value):,}"
+    except (ValueError, TypeError):
+        return "N/A"
+
+
+def safe_format_float(value, prefix="$"):
+    """Safely format a float value"""
+    if value is None:
+        return "N/A"
+    try:
+        return f"{prefix}{float(value):.2f}"
+    except (ValueError, TypeError):
+        return "N/A"
+
+
 def dataforseo_request(login, password, endpoint, method="POST", data=None):
     """Make request to DataForSEO API"""
     creds = f"{login}:{password}"
@@ -222,28 +242,30 @@ def analyze_with_claude(api_key, keyword_data, timeline):
     kw_metrics = keyword_data.get('keyword_metrics', {})
     my_bl = keyword_data.get('my_backlinks', {})
     
-    # Format metrics safely
-    search_vol = kw_metrics.get('search_volume')
+    # Safely format all metrics
+    search_vol = safe_format_number(kw_metrics.get('search_volume'))
     kw_diff = kw_metrics.get('keyword_difficulty')
-    cpc = kw_metrics.get('cpc')
+    kw_diff_str = f"{kw_diff}/100" if kw_diff is not None else "N/A"
+    cpc = safe_format_float(kw_metrics.get('cpc'))
     
-    search_vol_str = f"{search_vol:,}" if search_vol else "N/A"
-    kw_diff_str = f"{kw_diff}/100" if kw_diff else "N/A"
-    cpc_str = f"${cpc}" if cpc else "N/A"
+    my_bl_count = safe_format_number(my_bl.get('backlinks'))
+    my_ref_domains = safe_format_number(my_bl.get('referring_domains'))
+    my_rank = my_bl.get('rank')
+    my_rank_str = str(my_rank) if my_rank is not None else "N/A"
     
     prompt = f"""Analyze this competitive landscape for the keyword: "{keyword_data['keyword']}"
 
 KEYWORD METRICS:
-- Search Volume: {search_vol_str} searches/month
+- Search Volume: {search_vol} searches/month
 - Keyword Difficulty: {kw_diff_str}
-- CPC: {cpc_str}
+- CPC: {cpc}
 
 MY SITE ({keyword_data['my_domain']}):
 - Current Position: #{keyword_data['my_position']}
 - URL: {keyword_data.get('my_url', 'N/A')}
-- Total Backlinks: {my_bl.get('backlinks', 'N/A'):,}
-- Referring Domains: {my_bl.get('referring_domains', 'N/A'):,}
-- Domain Rank: {my_bl.get('rank', 'N/A')}
+- Total Backlinks: {my_bl_count}
+- Referring Domains: {my_ref_domains}
+- Domain Rank: {my_rank_str}
 
 TOP COMPETITORS:
 """
@@ -251,21 +273,17 @@ TOP COMPETITORS:
     for comp in keyword_data['competitors']:
         bl_data = comp.get('backlink_data', {})
         
-        # Safely format competitor backlink data
-        comp_bl = bl_data.get('backlinks')
-        comp_ref = bl_data.get('referring_domains')
+        comp_bl = safe_format_number(bl_data.get('backlinks'))
+        comp_ref = safe_format_number(bl_data.get('referring_domains'))
         comp_rank = bl_data.get('rank')
-        
-        comp_bl_str = f"{comp_bl:,}" if comp_bl else "N/A"
-        comp_ref_str = f"{comp_ref:,}" if comp_ref else "N/A"
-        comp_rank_str = str(comp_rank) if comp_rank else "N/A"
+        comp_rank_str = str(comp_rank) if comp_rank is not None else "N/A"
         
         prompt += f"""
 Position #{comp['position']} - {comp['domain']}
 - URL: {comp.get('url', 'N/A')}
 - Title: {comp.get('title', 'N/A')}
-- Total Backlinks: {comp_bl_str}
-- Referring Domains: {comp_ref_str}
+- Total Backlinks: {comp_bl}
+- Referring Domains: {comp_ref}
 - Domain Rank: {comp_rank_str}
 """
     
@@ -274,13 +292,34 @@ Position #{comp['position']} - {comp['domain']}
 TASK:
 Provide a comprehensive strategic plan to move from position #{keyword_data['my_position']} to top 3 within {timeline}.
 
-Provide:
-1. **SERP Analysis**: What patterns in top results? What intent?
-2. **Backlink Gap**: How significant is the deficit?
-3. **Prioritized Action Plan**: Specific tactics with effort/impact levels
-4. **Success Metrics**: How to measure progress
+Analyze the following:
 
-Be specific and actionable."""
+1. **SERP Analysis**:
+   - What patterns do you see in the top-ranking pages' titles and descriptions?
+   - What intent are they targeting (informational, commercial, transactional)?
+   - Are there any specific angles or USPs in the top results we should consider?
+
+2. **Backlink Gap Analysis**:
+   - How significant is our backlink deficit compared to top competitors?
+   - What's our referring domain gap vs position #1, #2, #3?
+   - Is this primarily a backlink problem or are there other factors?
+
+3. **Prioritized Action Plan**:
+   For each recommendation, provide:
+   - Specific tactic
+   - Effort level (Low/Medium/High)
+   - Expected impact (Low/Medium/High)
+   - Timeline estimate
+   - Success metrics
+
+Focus on actionable, realistic strategies. Consider:
+- Content improvements (depth, angles, format)
+- Backlink acquisition strategies (specific tactics)
+- Technical optimizations
+- On-page SEO improvements
+- User experience enhancements
+
+Be specific about what success looks like and how to measure it."""
 
     with st.spinner("🤖 Claude is analyzing the competitive landscape..."):
         message = client.messages.create(
@@ -382,15 +421,16 @@ with tab2:
         
         with col2:
             sv = data.get('keyword_metrics', {}).get('search_volume', 0)
-            st.metric("Search Volume", f"{sv:,}" if sv else "N/A")
+            st.metric("Search Volume", safe_format_number(sv))
         
         with col3:
-            kd = data.get('keyword_metrics', {}).get('keyword_difficulty', 0)
-            st.metric("Keyword Difficulty", f"{kd}/100" if kd else "N/A")
+            kd = data.get('keyword_metrics', {}).get('keyword_difficulty')
+            kd_display = f"{kd}/100" if kd is not None else "N/A"
+            st.metric("Keyword Difficulty", kd_display)
         
         with col4:
             bl = data.get('my_backlinks', {}).get('backlinks', 0)
-            st.metric("Your Backlinks", f"{bl:,}" if bl else "N/A")
+            st.metric("Your Backlinks", safe_format_number(bl))
         
         st.markdown("---")
         
@@ -405,8 +445,8 @@ with tab2:
                 comp_data.append({
                     'Position': f"#{comp['position']}",
                     'Domain': comp['domain'],
-                    'Backlinks': f"{bl_data.get('backlinks', 0):,}",
-                    'Ref Domains': f"{bl_data.get('referring_domains', 0):,}",
+                    'Backlinks': safe_format_number(bl_data.get('backlinks')),
+                    'Ref Domains': safe_format_number(bl_data.get('referring_domains')),
                     'Title': comp.get('title', 'N/A')[:60] + "..."
                 })
             
@@ -428,7 +468,7 @@ Date: {datetime.fromisoformat(result['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
 
 CURRENT METRICS:
 - Position: #{data.get('my_position')}
-- Search Volume: {data.get('keyword_metrics', {}).get('search_volume', 'N/A')}
+- Search Volume: {safe_format_number(data.get('keyword_metrics', {}).get('search_volume'))}
 - Keyword Difficulty: {data.get('keyword_metrics', {}).get('keyword_difficulty', 'N/A')}
 
 {'='*80}
