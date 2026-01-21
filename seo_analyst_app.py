@@ -222,12 +222,21 @@ def analyze_with_claude(api_key, keyword_data, timeline):
     kw_metrics = keyword_data.get('keyword_metrics', {})
     my_bl = keyword_data.get('my_backlinks', {})
     
+    # Format metrics safely
+    search_vol = kw_metrics.get('search_volume')
+    kw_diff = kw_metrics.get('keyword_difficulty')
+    cpc = kw_metrics.get('cpc')
+    
+    search_vol_str = f"{search_vol:,}" if search_vol else "N/A"
+    kw_diff_str = f"{kw_diff}/100" if kw_diff else "N/A"
+    cpc_str = f"${cpc}" if cpc else "N/A"
+    
     prompt = f"""Analyze this competitive landscape for the keyword: "{keyword_data['keyword']}"
 
 KEYWORD METRICS:
-- Search Volume: {kw_metrics.get('search_volume', 'N/A'):,} searches/month
-- Keyword Difficulty: {kw_metrics.get('keyword_difficulty', 'N/A')}/100
-- CPC: ${kw_metrics.get('cpc', 'N/A')}
+- Search Volume: {search_vol_str} searches/month
+- Keyword Difficulty: {kw_diff_str}
+- CPC: {cpc_str}
 
 MY SITE ({keyword_data['my_domain']}):
 - Current Position: #{keyword_data['my_position']}
@@ -241,13 +250,23 @@ TOP COMPETITORS:
     
     for comp in keyword_data['competitors']:
         bl_data = comp.get('backlink_data', {})
+        
+        # Safely format competitor backlink data
+        comp_bl = bl_data.get('backlinks')
+        comp_ref = bl_data.get('referring_domains')
+        comp_rank = bl_data.get('rank')
+        
+        comp_bl_str = f"{comp_bl:,}" if comp_bl else "N/A"
+        comp_ref_str = f"{comp_ref:,}" if comp_ref else "N/A"
+        comp_rank_str = str(comp_rank) if comp_rank else "N/A"
+        
         prompt += f"""
 Position #{comp['position']} - {comp['domain']}
 - URL: {comp.get('url', 'N/A')}
 - Title: {comp.get('title', 'N/A')}
-- Total Backlinks: {bl_data.get('backlinks', 'N/A'):,}
-- Referring Domains: {bl_data.get('referring_domains', 'N/A'):,}
-- Domain Rank: {bl_data.get('rank', 'N/A')}
+- Total Backlinks: {comp_bl_str}
+- Referring Domains: {comp_ref_str}
+- Domain Rank: {comp_rank_str}
 """
     
     prompt += f"""
